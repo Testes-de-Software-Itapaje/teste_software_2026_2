@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from entity.produto_model import ProdutoCreate, ProdutoRead
+from backend.entity.produto_model import ProdutoCreate, ProdutoRead
 
 
 def test_produto_create_com_dados_validos():

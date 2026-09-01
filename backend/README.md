@@ -5,9 +5,9 @@ Este projeto é uma API REST desenvolvida em Python com FastAPI para gerenciar p
 A estrutura do projeto inclui:
 
 - `main.py`: aplicação principal com os endpoints da API
-- `db/`: configuração do banco e modelos de tabela
-- `entity/`: modelos de dados usados pela aplicação
-- `tests/`: testes automatizados
+- `db`: configuração do banco e modelos de tabela
+- `entity`: modelos de dados usados pela aplicação
+- `tests`: testes automatizados
 - `requirements.txt`: dependências do projeto
 
 ## Requisitos
