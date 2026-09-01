@@ -1,6 +1,6 @@
-from entity.produto import Produto
+from backend.entity.produto import Produto
 import pytest
-from exceptions.excecoes import NomeInvalidoError
+from backend.exceptions.excecoes import NomeInvalidoError
 
 def test_criar_produto_com_sucesso():
     """Garante que o Produto seja criado com dados válidos."""

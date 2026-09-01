@@ -1,4 +1,4 @@
-from exceptions.excecoes import NomeInvalidoError
+from backend.exceptions.excecoes import NomeInvalidoError
 
 class Produto:
     """Entidade de domínio que valida os atributos do produto."""
