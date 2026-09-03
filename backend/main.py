@@ -3,8 +3,19 @@ from sqlalchemy.orm import Session
 from db.database import Base, engine, get_db
 from entity.produto_model import ProdutoCreate, ProdutoRead
 from db.produto_schema import ProdutoDB
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(docs_url="/docs", redoc_url="/redoc")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def startup():
