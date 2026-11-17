@@ -1,228 +1,204 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdModeEdit } from "react-icons/md";
-import { MdDelete } from "react-icons/md";
-import { MdChat } from "react-icons/md";
-
 import {
-  listarProdutos,
-  excluirProduto
-} from '../services/produtoService'
+  MdModeEdit,
+  MdDelete,
+  MdChat,
+  MdReceiptLong,
+  MdShoppingCartCheckout
+} from 'react-icons/md'
+
+import { listarProdutos, excluirProduto } from '../services/produtoService'
+import { registrarVenda } from '../services/vendaService'
+import VendaModal from '../components/VendaModal'
+
+const moeda = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL'
+})
 
 function Produtos() {
   const [produtos, setProdutos] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
+  const [vendaAtual, setVendaAtual] = useState(null)
+  const [aviso, setAviso] = useState('')
 
-  useEffect(() => {
-    carregarProdutos()
-  }, [])
-
-  async function carregarProdutos() {
+  const carregarProdutos = useCallback(async () => {
+    setCarregando(true)
+    setErro('')
     try {
-      setCarregando(true)
-
       const dados = await listarProdutos()
-
       setProdutos(dados)
-    } catch (erro) {
-      setErro(erro.message)
+    } catch (falha) {
+      setErro(falha.message)
     } finally {
       setCarregando(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    carregarProdutos()
+  }, [carregarProdutos])
 
   async function handleExcluir(id) {
-    const confirmar = window.confirm(
-      'Tem certeza que deseja excluir este produto?'
-    )
-
+    const confirmar = window.confirm('Tem certeza que deseja excluir este produto?')
     if (!confirmar) return
 
     try {
       await excluirProduto(id)
-
-      setProdutos(
-        produtos.filter(produto => produto.id !== id)
-      )
-    } catch (erro) {
-      alert(erro.message)
+      setProdutos(atuais => atuais.filter(produto => produto.id !== id))
+      setAviso('Produto excluído com sucesso.')
+    } catch (falha) {
+      setErro(falha.message)
     }
   }
 
-  const produtosFiltrados = produtos.filter(produto => {
-    const termo = busca.toLowerCase()
-
-    return (
-      produto.nome?.toLowerCase().includes(termo) ||
-      produto.codigo_barras?.toLowerCase().includes(termo) ||
-      produto.categoria?.toLowerCase().includes(termo)
-    )
-  })
-
-  if (carregando) {
-    return (
-      <div className="estado">
-        <p>Carregando produtos...</p>
-      </div>
-    )
+  async function handleConfirmarVenda(produtoId, quantidade) {
+    const resultado = await registrarVenda(produtoId, quantidade)
+    setVendaAtual(null)
+    setAviso(`Venda #${resultado.id} registrada! Restam ${resultado.estoque_restante} unidades de ${resultado.produto_nome}.`)
+    await carregarProdutos()
   }
 
-  if (erro) {
-    return (
-      <div className="estado">
-        <p>{erro}</p>
-      </div>
-    )
-  }
+  const termo = busca.trim().toLocaleLowerCase('pt-BR')
+  const produtosFiltrados = produtos.filter(produto =>
+    produto.nome?.toLocaleLowerCase('pt-BR').includes(termo) ||
+    produto.codigo_barras?.toLocaleLowerCase('pt-BR').includes(termo) ||
+    produto.categoria?.toLocaleLowerCase('pt-BR').includes(termo)
+  )
 
   return (
     <div className="sistema">
-
       <main className="conteudo">
-
         <header className="topo">
-
           <div>
-            <h1>
-              Sistema de Produtos
-            </h1>
-
-            <p> Gerencie os produtos cadastrados no sistema.</p>
+            <h1>Sistema de Produtos</h1>
+            <p>Gerencie seus produtos, o estoque e as vendas.</p>
           </div>
-
-          <Link
-            to="/chat"
-            className="botao-chat"
-            title="Conversar com o assistente"
-            aria-label="Abrir o chat com o assistente"
-          >
-            <MdChat size={24} />
-          </Link>
-
+          <div className="topo-links">
+            <Link to="/vendas" className="botao-voltar">
+              <MdReceiptLong size={19} /> Histórico de vendas
+            </Link>
+            <Link
+              to="/chat"
+              className="botao-chat"
+              title="Conversar com o assistente"
+              aria-label="Abrir o chat com o assistente"
+            >
+              <MdChat size={24} />
+            </Link>
+          </div>
         </header>
 
-        <div className="acoes-topo">
-
-          <Link
-            to="/produtos/criar"
-            className="botao-novo">
-            <span>+</span>
-            Novo Produto
+        <div className="acoes-topo produtos-toolbar">
+          <Link to="/produtos/criar" className="botao-novo">
+            <span>+</span> Novo Produto
           </Link>
-
+          <input
+            type="search"
+            className="busca-produtos"
+            placeholder="Buscar por nome, categoria ou código..."
+            aria-label="Buscar produtos"
+            value={busca}
+            onChange={evento => setBusca(evento.target.value)}
+          />
         </div>
 
+        {aviso && <p className="aviso-sucesso" role="status">{aviso}</p>}
+        {erro && <p className="venda-erro aviso-erro" role="alert">{erro}</p>}
+
         <section className="card-tabela">
-
           <div className="tabela-header">
-            <span>
-              Total: {produtosFiltrados.length} produtos
-            </span>
+            <span>Total: {produtosFiltrados.length} produtos</span>
           </div>
-
-          <div className="tabela-container">
-
-            <table>
-
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Nome</th>
-                  <th>Preço</th>
-                  <th>Estoque</th>
-                  <th>Validade</th>
-                  <th>Código de Barras</th>
-                  <th>Categoria</th>
-                  <th>Peso</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {produtosFiltrados.map(produto => (
-
-                  <tr key={produto.id}>
-
-                    <td>{produto.id}</td>
-
-                    <td>
-                      <div className="produto-nome">
-
-                        <span>{produto.nome}</span>
-                      </div>
-                    </td>
-
-                    <td>
-                      R$ {Number(produto.preco).toFixed(2)}
-                    </td>
-
-                    <td>
-                      {produto.quant_estoque}
-                    </td>
-
-                    <td>
-                      {produto.validade}
-                    </td>
-
-                    <td>
-                      {produto.codigo_barras}
-                    </td>
-
-                    <td>
-                      <span className="categoria">
-                        {produto.categoria}
-                      </span>
-                    </td>
-
-                    <td>
-                      {produto.peso}
-                    </td>
-
-                    <td>
-                      <div className="acoes">
-
-                        <Link
-                          to={`/produtos/${produto.id}`}
-                          className="botao-editar"
-                        >
-                          <MdModeEdit size={20}/>
-                        </Link>
-
-                        <button
-                          className="botao-excluir"
-                          onClick={() =>
-                            handleExcluir(produto.id)
-                          }
-                        >
-                         <MdDelete size={20}/>
-                        </button>
-
-                      </div>
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-          {produtosFiltrados.length === 0 && (
-            <div className="sem-produtos">
-              Nenhum produto encontrado.
-            </div>
+          {carregando ? (
+            <div className="estado">Carregando produtos...</div>
+          ) : (
+            <>
+              <div className="tabela-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Nome</th>
+                      <th>Preço</th>
+                      <th>Estoque</th>
+                      <th>Validade</th>
+                      <th>Código de Barras</th>
+                      <th>Categoria</th>
+                      <th>Peso</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {produtosFiltrados.map(produto => (
+                      <tr key={produto.id}>
+                        <td>{produto.id}</td>
+                        <td><div className="produto-nome">{produto.nome}</div></td>
+                        <td>{moeda.format(Number(produto.preco))}</td>
+                        <td>
+                          <span className={produto.quant_estoque === 0 ? 'estoque-zerado' : 'estoque-disponivel'}>
+                            {produto.quant_estoque}
+                          </span>
+                        </td>
+                        <td>{produto.validade}</td>
+                        <td>{produto.codigo_barras}</td>
+                        <td><span className="categoria">{produto.categoria}</span></td>
+                        <td>{produto.peso}</td>
+                        <td>
+                          <div className="acoes">
+                            <button
+                              type="button"
+                              className="botao-vender"
+                              disabled={Number(produto.quant_estoque) < 1}
+                              onClick={() => {
+                                setAviso('')
+                                setVendaAtual(produto)
+                              }}
+                              title={produto.quant_estoque < 1 ? 'Sem estoque' : `Vender ${produto.nome}`}
+                            >
+                              <MdShoppingCartCheckout size={18} /> Vender
+                            </button>
+                            <Link
+                              to={`/produtos/${produto.id}`}
+                              className="botao-editar"
+                              title={`Editar ${produto.nome}`}
+                              aria-label={`Editar ${produto.nome}`}
+                            >
+                              <MdModeEdit size={20} />
+                            </Link>
+                            <button
+                              type="button"
+                              className="botao-excluir"
+                              onClick={() => handleExcluir(produto.id)}
+                              title={`Excluir ${produto.nome}`}
+                              aria-label={`Excluir ${produto.nome}`}
+                            >
+                              <MdDelete size={20} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {produtosFiltrados.length === 0 && (
+                <div className="sem-produtos">Nenhum produto encontrado.</div>
+              )}
+            </>
           )}
-
         </section>
-
       </main>
-
+      {vendaAtual && (
+        <VendaModal
+          produto={vendaAtual}
+          onFechar={() => setVendaAtual(null)}
+          onConfirmar={handleConfirmarVenda}
+        />
+      )}
     </div>
   )
 }

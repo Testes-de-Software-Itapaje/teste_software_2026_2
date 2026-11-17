@@ -10,13 +10,10 @@ import {
 import { enviarMensagem } from '../services/chatService'
 
 const SUGESTOES = [
-  'Quais produtos estão com estoque baixo?',
-  'Qual é o produto mais caro?',
-  'Liste as categorias cadastradas.',
-  'Algum produto está perto de vencer?'
+  
 ]
 
-// Converte **negrito** (comum nas respostas do modelo) sem usar HTML cru.
+
 function formatarTexto(texto) {
   return texto.split(/\*\*(.+?)\*\*/g).map((parte, indice) =>
     indice % 2 === 1
@@ -127,9 +124,7 @@ function Chat() {
           <div className="chat-header">
 
             <div className="chat-titulo">
-              <span className="chat-avatar">
-                <MdSmartToy size={20} />
-              </span>
+              
 
               <div>
                 <strong>Assistente de estoque</strong>
@@ -154,10 +149,6 @@ function Chat() {
 
             {mensagens.length === 0 && (
               <div className="chat-vazio">
-
-                <span className="chat-avatar chat-avatar-grande">
-                  <MdSmartToy size={30} />
-                </span>
 
                 <h2>Como posso ajudar?</h2>
 
@@ -188,11 +179,6 @@ function Chat() {
                 key={mensagem.id}
                 className={`chat-linha ${mensagem.autor}`}
               >
-                {mensagem.autor === 'assistente' && (
-                  <span className="chat-avatar">
-                    <MdSmartToy size={18} />
-                  </span>
-                )}
 
                 <div
                   className={
@@ -207,9 +193,6 @@ function Chat() {
 
             {enviando && (
               <div className="chat-linha assistente">
-                <span className="chat-avatar">
-                  <MdSmartToy size={18} />
-                </span>
 
                 <div className="chat-balao assistente chat-digitando">
                   <span></span>
