@@ -17,3 +17,14 @@ export async function enviarMensagem(mensagem) {
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .trim()
 }
+
+export async function enviarAnexo(arquivo) {
+  const formulario = new FormData()
+  formulario.append('arquivo', arquivo)
+
+  return requisitar(
+    '/chat/anexo',
+    { method: 'POST', body: formulario },
+    'Erro ao importar o documento'
+  )
+}

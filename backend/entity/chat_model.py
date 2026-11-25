@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
+from entity.produto_model import ProdutoRead
 
 
 class ChatRequest(BaseModel):
@@ -12,3 +13,15 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     resposta: str
+
+
+class ProdutoIgnorado(BaseModel):
+    item: int
+    nome: str | None = None
+    motivo: str
+
+
+class AnexoResponse(BaseModel):
+    resposta: str
+    criados: list[ProdutoRead]
+    ignorados: list[ProdutoIgnorado]

@@ -1,4 +1,6 @@
+import json
 import os
+import re
 
 import requests
 
@@ -87,3 +89,85 @@ def enviar_mensagem(
         raise RuntimeError(
             f"Erro ao consultar o Ollama: {erro}"
         )
+
+
+def extrair_produtos_json(texto: str) -> list[dict]:
+    mensagens = [
+        {
+            "role": "system",
+            "content": (
+                "Você extrai produtos de documentos. Responda somente com um "
+                "JSON no formato {\"produtos\": [...]}, sem nenhum texto extra. "
+                "Cada produto deve ter exatamente as chaves: nome (texto), "
+                "preco (número decimal em reais, ex.: 27.90), quant_estoque "
+                "(número inteiro), validade (texto no formato dd/mm/aaaa), "
+                "codigo_barras (texto só com dígitos), categoria (texto) e "
+                "peso (número em gramas). Use null para informações que não "
+                "estiverem no documento. Não invente produtos nem valores."
+            )
+        },
+        {
+            "role": "user",
+            "content": f"Documento:\n\n{texto}"
+        }
+    ]
+
+    payload = {
+        "model": MODELO,
+        "messages": mensagens,
+        "stream": False,
+        "think": False,
+        "format": "json"
+    }
+
+    try:
+        resposta = requests.post(
+            OLLAMA_URL,
+            json=payload,
+            timeout=300
+        )
+
+        resposta.raise_for_status()
+
+        conteudo = resposta.json()["message"]["content"]
+
+    except (KeyError, TypeError, ValueError):
+        raise RuntimeError(
+            "Resposta inesperada do Ollama."
+        )
+
+    except requests.exceptions.ConnectionError:
+        raise RuntimeError(
+            "Não foi possível conectar ao Ollama."
+        )
+
+    except requests.exceptions.Timeout:
+        raise RuntimeError(
+            "O Ollama demorou muito para responder."
+        )
+
+    except requests.exceptions.RequestException as erro:
+        raise RuntimeError(
+            f"Erro ao consultar o Ollama: {erro}"
+        )
+
+    conteudo = re.sub(r"<think>[\s\S]*?</think>", "", conteudo).strip()
+
+    try:
+        dados = json.loads(conteudo)
+    except json.JSONDecodeError:
+        raise RuntimeError(
+            "O Ollama não devolveu um JSON válido com os produtos."
+        )
+
+    if isinstance(dados, list):
+        return dados
+
+    if isinstance(dados, dict):
+        produtos = dados.get("produtos")
+        if isinstance(produtos, list):
+            return produtos
+        if "nome" in dados:
+            return [dados]
+
+    return []

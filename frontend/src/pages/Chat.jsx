@@ -4,10 +4,19 @@ import {
   MdArrowBack,
   MdSend,
   MdSmartToy,
-  MdDeleteSweep
+  MdDeleteSweep,
+  MdAttachFile,
+  MdClose
 } from 'react-icons/md'
 
-import { enviarMensagem } from '../services/chatService'
+import { enviarMensagem, enviarAnexo } from '../services/chatService'
+
+const EXTENSOES_ACEITAS = '.csv,.xlsx,.pdf,.txt'
+
+const moeda = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL'
+})
 
 const SUGESTOES = [
   
@@ -26,10 +35,12 @@ function Chat() {
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [anexo, setAnexo] = useState(null)
 
   const proximoId = useRef(1)
   const listaRef = useRef(null)
   const campoRef = useRef(null)
+  const arquivoRef = useRef(null)
 
   useEffect(() => {
     const lista = listaRef.current
@@ -39,10 +50,42 @@ function Chat() {
     }
   }, [mensagens, enviando])
 
-  function adicionarMensagem(autor, conteudo, erro = false) {
+  function adicionarMensagem(autor, conteudo, erro = false, extras = {}) {
     const id = proximoId.current++
 
-    setMensagens(atuais => [...atuais, { id, autor, conteudo, erro }])
+    setMensagens(atuais => [...atuais, { id, autor, conteudo, erro, ...extras }])
+  }
+
+  function handleEscolherArquivo(evento) {
+    const arquivo = evento.target.files?.[0]
+
+    if (arquivo) setAnexo(arquivo)
+
+    evento.target.value = ''
+  }
+
+  async function importarAnexo() {
+    if (!anexo || enviando) return
+
+    const arquivo = anexo
+
+    adicionarMensagem('usuario', `Anexo: ${arquivo.name}`)
+    setAnexo(null)
+    setEnviando(true)
+
+    try {
+      const resultado = await enviarAnexo(arquivo)
+
+      adicionarMensagem('assistente', resultado.resposta, false, {
+        criados: resultado.criados,
+        ignorados: resultado.ignorados
+      })
+    } catch (erro) {
+      adicionarMensagem('assistente', erro.message, true)
+    } finally {
+      setEnviando(false)
+      campoRef.current?.focus()
+    }
   }
 
   async function enviar(conteudo) {
@@ -72,6 +115,12 @@ function Chat() {
 
   function handleSubmit(evento) {
     evento.preventDefault()
+
+    if (anexo) {
+      importarAnexo()
+      return
+    }
+
     enviar(texto)
   }
 
@@ -82,7 +131,9 @@ function Chat() {
       !evento.nativeEvent.isComposing
     ) {
       evento.preventDefault()
-      enviar(texto)
+
+      if (anexo) importarAnexo()
+      else enviar(texto)
     }
   }
 
@@ -187,6 +238,40 @@ function Chat() {
                   }
                 >
                   {formatarTexto(mensagem.conteudo)}
+
+                  {mensagem.criados?.length > 0 && (
+                    <>
+                      <span className="chat-importados-titulo">Cadastrados</span>
+                      <ul className="chat-importados">
+                        {mensagem.criados.map(produto => (
+                          <li key={produto.id}>
+                            <strong>{produto.nome}</strong>
+                            {' - '}{moeda.format(Number(produto.preco))}
+                            {' - '}{produto.quant_estoque} un.
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
+                  {mensagem.ignorados?.length > 0 && (
+                    <>
+                      <span className="chat-importados-titulo">Ignorados</span>
+                      <ul className="chat-importados chat-ignorados">
+                        {mensagem.ignorados.map(item => (
+                          <li key={item.item}>
+                            Item {item.item}{item.nome ? ` (${item.nome})` : ''}: {item.motivo}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
+                  {mensagem.criados && (
+                    <Link to="/produtos" className="chat-ver-produtos">
+                      Ver lista de produtos
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}
@@ -204,13 +289,49 @@ function Chat() {
 
           </div>
 
+          {anexo && (
+            <div className="chat-anexo">
+              <MdAttachFile size={16} />
+              <span>{anexo.name}</span>
+              <button
+                type="button"
+                onClick={() => setAnexo(null)}
+                disabled={enviando}
+                aria-label="Remover anexo"
+                title="Remover anexo"
+              >
+                <MdClose size={16} />
+              </button>
+            </div>
+          )}
+
           <form className="chat-form" onSubmit={handleSubmit}>
+
+            <input
+              ref={arquivoRef}
+              type="file"
+              accept={EXTENSOES_ACEITAS}
+              onChange={handleEscolherArquivo}
+              hidden
+            />
+
+            <button
+              type="button"
+              className="chat-anexar"
+              onClick={() => arquivoRef.current?.click()}
+              disabled={enviando}
+              aria-label="Anexar documento"
+              title="Anexar documento (.csv, .xlsx, .pdf, .txt)"
+            >
+              <MdAttachFile size={20} />
+            </button>
 
             <textarea
               ref={campoRef}
               rows={1}
-              placeholder="Digite sua pergunta..."
+              placeholder={anexo ? 'Pressione Enviar para importar o documento' : 'Digite sua pergunta...'}
               value={texto}
+              disabled={Boolean(anexo)}
               onChange={handleChange}
               onKeyDown={handleTeclado}
               aria-label="Mensagem para o assistente"
@@ -220,7 +341,7 @@ function Chat() {
             <button
               type="submit"
               className="chat-enviar"
-              disabled={enviando || texto.trim() === ''}
+              disabled={enviando || (!anexo && texto.trim() === '')}
               aria-label="Enviar mensagem"
               title="Enviar"
             >
