@@ -21,3 +21,10 @@ class ProdutoRead(ProdutoBase):
     """Modelo Pydantic usado para retornar dados do Produto pela API."""
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProdutoPagina(BaseModel):
+    itens: list[ProdutoRead]
+    pagina: int
+    total_paginas: int
+    total: int
