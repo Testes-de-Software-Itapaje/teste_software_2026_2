@@ -5,7 +5,7 @@ from db.database import get_db
 from db.produto_schema import ProdutoDB
 from entity.chat_model import ChatRequest, ChatResponse, AnexoResponse
 from services.ollama_service import enviar_mensagem
-from services.produto_context_service import gerar_contexto_produtos
+from services.produto_context_service import gerar_contexto_produtos, responder_do_catalogo
 from services.importacao_service import (
     ArquivoInvalidoError,
     ler_documento,
@@ -25,18 +25,13 @@ def conversar(
     db: Session = Depends(get_db)
 ):
     try:
-        produtos = db.query(ProdutoDB).all()
+        resposta = responder_do_catalogo(chat.mensagem, db)
+        if resposta is not None:
+            return ChatResponse(resposta=resposta)
 
-        contexto = gerar_contexto_produtos(produtos)
-
-        resposta = enviar_mensagem(
-            mensagem=chat.mensagem,
-            contexto=contexto
-        )
-
-        return ChatResponse(
-            resposta=resposta
-        )
+        contexto = gerar_contexto_produtos(chat.mensagem, db)
+        db.rollback()
+        return ChatResponse(resposta=enviar_mensagem(chat.mensagem, contexto))
 
     except RuntimeError as erro:
         raise HTTPException(

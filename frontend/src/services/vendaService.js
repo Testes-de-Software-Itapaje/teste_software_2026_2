@@ -2,13 +2,13 @@ import { requisitar } from './api'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
-export function registrarVenda(produtoId, quantidade) {
+export function registrarVenda(itens) {
   return requisitar(
-    '/venda',
+    '/venda/lote',
     {
       method: 'POST',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ produto_id: produtoId, quantidade })
+      body: JSON.stringify({ itens })
     },
     'Não foi possível registrar a venda.'
   )

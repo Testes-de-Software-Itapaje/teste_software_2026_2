@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
 
     mensagem: str = Field(
         min_length=1,
+        max_length=2000,
         description="Mensagem enviada pelo usuário"
     )
 

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   MdArrowBack,
   MdSend,
-  MdSmartToy,
   MdDeleteSweep,
   MdAttachFile,
   MdClose
@@ -19,7 +18,9 @@ const moeda = new Intl.NumberFormat('pt-BR', {
 })
 
 const SUGESTOES = [
-  
+  'Quantos produtos estão cadastrados?',
+  'Quais produtos estão sem estoque?',
+  'Qual é o produto mais barato?'
 ]
 
 
@@ -68,7 +69,6 @@ function Chat() {
     if (!anexo || enviando) return
 
     const arquivo = anexo
-
     adicionarMensagem('usuario', `Anexo: ${arquivo.name}`)
     setAnexo(null)
     setEnviando(true)
@@ -175,7 +175,6 @@ function Chat() {
           <div className="chat-header">
 
             <div className="chat-titulo">
-              
 
               <div>
                 <strong>Assistente de estoque</strong>
@@ -329,6 +328,7 @@ function Chat() {
             <textarea
               ref={campoRef}
               rows={1}
+              maxLength={2000}
               placeholder={anexo ? 'Pressione Enviar para importar o documento' : 'Digite sua pergunta...'}
               value={texto}
               disabled={Boolean(anexo)}

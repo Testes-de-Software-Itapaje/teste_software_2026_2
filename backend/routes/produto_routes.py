@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from db.database import get_db
-from entity.produto_model import ProdutoCreate, ProdutoRead
+from db.database import get_db, normalizar_busca
+from entity.produto_model import ProdutoCreate, ProdutoPagina, ProdutoRead
 from db.produto_schema import ProdutoDB
 
 
@@ -26,6 +27,36 @@ def criar_produto(
     db.refresh(produto_db)
 
     return produto_db
+
+
+@router.get("/pagina", response_model=ProdutoPagina)
+def listar_pagina_produtos(
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(10, ge=1, le=100),
+    busca: str = Query("", max_length=200),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(ProdutoDB)
+    termo = normalizar_busca(busca.strip())
+    if termo:
+        consulta = consulta.filter(or_(
+            func.instr(func.normalizar_busca(ProdutoDB.nome), termo) > 0,
+            func.instr(func.normalizar_busca(ProdutoDB.codigo_barras), termo) > 0,
+            func.instr(func.normalizar_busca(ProdutoDB.categoria), termo) > 0,
+        ))
+
+    total = consulta.count()
+    total_paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    pagina = min(pagina, total_paginas)
+    itens = (
+        consulta.order_by(ProdutoDB.id)
+        .offset((pagina - 1) * por_pagina)
+        .limit(por_pagina)
+        .all()
+    )
+    return ProdutoPagina(
+        itens=itens, pagina=pagina, total_paginas=total_paginas, total=total
+    )
 
 
 @router.get("/{produto_id}", response_model=ProdutoRead)

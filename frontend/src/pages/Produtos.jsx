@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MdModeEdit,
@@ -8,7 +8,7 @@ import {
   MdShoppingCartCheckout
 } from 'react-icons/md'
 
-import { listarProdutos, excluirProduto } from '../services/produtoService'
+import { listarPaginaProdutos, excluirProduto } from '../services/produtoService'
 import { registrarVenda } from '../services/vendaService'
 import VendaModal from '../components/VendaModal'
 
@@ -18,29 +18,70 @@ const moeda = new Intl.NumberFormat('pt-BR', {
 })
 
 function Produtos() {
-  const [produtos, setProdutos] = useState([])
+  const [resultado, setResultado] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
-  const [vendaAtual, setVendaAtual] = useState(null)
+  const [pagina, setPagina] = useState(1)
+  const [revisao, setRevisao] = useState(0)
+  const [selecionados, setSelecionados] = useState({})
+  const [vendaAberta, setVendaAberta] = useState(false)
   const [aviso, setAviso] = useState('')
 
-  const carregarProdutos = useCallback(async () => {
+  function prepararConsulta() {
     setCarregando(true)
     setErro('')
-    try {
-      const dados = await listarProdutos()
-      setProdutos(dados)
-    } catch (falha) {
-      setErro(falha.message)
-    } finally {
-      setCarregando(false)
-    }
-  }, [])
+  }
 
   useEffect(() => {
+    const consulta = new AbortController()
+
+    async function carregarProdutos() {
+      try {
+        const dados = await listarPaginaProdutos(pagina, busca.trim(), consulta.signal)
+        if (consulta.signal.aborted) return
+        setResultado(dados)
+        setSelecionados(atuais => {
+          const atualizados = { ...atuais }
+          for (const produto of dados.itens) {
+            if (!(produto.id in atualizados)) continue
+            if (produto.quant_estoque > 0) atualizados[produto.id] = produto
+            else delete atualizados[produto.id]
+          }
+          return atualizados
+        })
+      } catch (falha) {
+        if (!consulta.signal.aborted) {
+          setResultado(null)
+          setErro(falha.message)
+        }
+      } finally {
+        if (!consulta.signal.aborted) setCarregando(false)
+      }
+    }
+
     carregarProdutos()
-  }, [carregarProdutos])
+    return () => consulta.abort()
+  }, [pagina, busca, revisao])
+
+  function trocarPagina(novaPagina) {
+    prepararConsulta()
+    setPagina(novaPagina)
+  }
+
+  function atualizarLista() {
+    prepararConsulta()
+    setRevisao(atual => atual + 1)
+  }
+
+  function alternarSelecao(produto, marcado) {
+    setSelecionados(atuais => {
+      const proximos = { ...atuais }
+      if (marcado) proximos[produto.id] = produto
+      else delete proximos[produto.id]
+      return proximos
+    })
+  }
 
   async function handleExcluir(id) {
     const confirmar = window.confirm('Tem certeza que deseja excluir este produto?')
@@ -48,26 +89,26 @@ function Produtos() {
 
     try {
       await excluirProduto(id)
-      setProdutos(atuais => atuais.filter(produto => produto.id !== id))
+      alternarSelecao({ id }, false)
       setAviso('Produto excluído com sucesso.')
+      atualizarLista()
     } catch (falha) {
       setErro(falha.message)
     }
   }
 
-  async function handleConfirmarVenda(produtoId, quantidade) {
-    const resultado = await registrarVenda(produtoId, quantidade)
-    setVendaAtual(null)
-    setAviso(`Venda #${resultado.id} registrada! Restam ${resultado.estoque_restante} unidades de ${resultado.produto_nome}.`)
-    await carregarProdutos()
+  async function handleConfirmarVenda(itens) {
+    const vendas = await registrarVenda(itens)
+    const total = vendas.reduce((soma, venda) => soma + venda.valor_total, 0)
+    setVendaAberta(false)
+    setSelecionados({})
+    setAviso(vendas.length === 1
+      ? `Venda #${vendas[0].id} registrada. Estoque restante de ${vendas[0].produto_nome}: ${vendas[0].estoque_restante}.`
+      : `Venda registrada com ${vendas.length} produtos. Total: ${moeda.format(total)}.`)
+    atualizarLista()
   }
 
-  const termo = busca.trim().toLocaleLowerCase('pt-BR')
-  const produtosFiltrados = produtos.filter(produto =>
-    produto.nome?.toLocaleLowerCase('pt-BR').includes(termo) ||
-    produto.codigo_barras?.toLocaleLowerCase('pt-BR').includes(termo) ||
-    produto.categoria?.toLocaleLowerCase('pt-BR').includes(termo)
-  )
+  const produtosSelecionados = Object.values(selecionados)
 
   return (
     <div className="sistema">
@@ -101,26 +142,51 @@ function Produtos() {
             className="busca-produtos"
             placeholder="Buscar por nome, categoria ou código..."
             aria-label="Buscar produtos"
+            maxLength={200}
             value={busca}
-            onChange={evento => setBusca(evento.target.value)}
+            onChange={evento => {
+              prepararConsulta()
+              setBusca(evento.target.value)
+              setPagina(1)
+            }}
           />
+          <div className="produtos-venda-acoes">
+            {produtosSelecionados.length > 0 && (
+              <button type="button" className="botao-limpar-selecao" onClick={() => setSelecionados({})}>
+                Limpar seleção
+              </button>
+            )}
+            <button
+              type="button"
+              className="botao-vender"
+              disabled={carregando || produtosSelecionados.length === 0}
+              onClick={() => {
+                setAviso('')
+                setVendaAberta(true)
+              }}
+            >
+              <MdShoppingCartCheckout size={18} /> Vender
+              {produtosSelecionados.length > 0 && ` (${produtosSelecionados.length})`}
+            </button>
+          </div>
         </div>
 
         {aviso && <p className="aviso-sucesso" role="status">{aviso}</p>}
         {erro && <p className="venda-erro aviso-erro" role="alert">{erro}</p>}
 
         <section className="card-tabela">
-          <div className="tabela-header">
-            <span>Total: {produtosFiltrados.length} produtos</span>
-          </div>
           {carregando ? (
-            <div className="estado">Carregando produtos...</div>
-          ) : (
+            <div className="estado" role="status">Carregando produtos...</div>
+          ) : resultado && (
             <>
+              <div className="tabela-header">
+                <span>Total: {resultado.total} produtos</span>
+              </div>
               <div className="tabela-container">
                 <table>
                   <thead>
                     <tr>
+                      <th scope="col">Selecionar</th>
                       <th>ID</th>
                       <th>Nome</th>
                       <th>Preço</th>
@@ -133,13 +199,23 @@ function Produtos() {
                     </tr>
                   </thead>
                   <tbody>
-                    {produtosFiltrados.map(produto => (
+                    {resultado.itens.map(produto => (
                       <tr key={produto.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            className="produto-selecao"
+                            aria-label={`Selecionar ${produto.nome} (produto #${produto.id})`}
+                            checked={produto.id in selecionados}
+                            disabled={produto.quant_estoque < 1}
+                            onChange={evento => alternarSelecao(produto, evento.target.checked)}
+                          />
+                        </td>
                         <td>{produto.id}</td>
                         <td><div className="produto-nome">{produto.nome}</div></td>
                         <td>{moeda.format(Number(produto.preco))}</td>
                         <td>
-                          <span className={produto.quant_estoque === 0 ? 'estoque-zerado' : 'estoque-disponivel'}>
+                          <span className={produto.quant_estoque < 1 ? 'estoque-zerado' : 'estoque-disponivel'}>
                             {produto.quant_estoque}
                           </span>
                         </td>
@@ -149,18 +225,6 @@ function Produtos() {
                         <td>{produto.peso}</td>
                         <td>
                           <div className="acoes">
-                            <button
-                              type="button"
-                              className="botao-vender"
-                              disabled={Number(produto.quant_estoque) < 1}
-                              onClick={() => {
-                                setAviso('')
-                                setVendaAtual(produto)
-                              }}
-                              title={produto.quant_estoque < 1 ? 'Sem estoque' : `Vender ${produto.nome}`}
-                            >
-                              <MdShoppingCartCheckout size={18} /> Vender
-                            </button>
                             <Link
                               to={`/produtos/${produto.id}`}
                               className="botao-editar"
@@ -185,17 +249,36 @@ function Produtos() {
                   </tbody>
                 </table>
               </div>
-              {produtosFiltrados.length === 0 && (
+              {resultado.total === 0 && (
                 <div className="sem-produtos">Nenhum produto encontrado.</div>
+              )}
+              {resultado.total_paginas > 1 && (
+                <nav className="produtos-paginacao" aria-label="Paginação de produtos">
+                  <button
+                    type="button"
+                    disabled={resultado.pagina <= 1}
+                    onClick={() => trocarPagina(resultado.pagina - 1)}
+                  >
+                    Anterior
+                  </button>
+                  <span>Página {resultado.pagina} de {resultado.total_paginas}</span>
+                  <button
+                    type="button"
+                    disabled={resultado.pagina >= resultado.total_paginas}
+                    onClick={() => trocarPagina(resultado.pagina + 1)}
+                  >
+                    Próxima
+                  </button>
+                </nav>
               )}
             </>
           )}
         </section>
       </main>
-      {vendaAtual && (
+      {vendaAberta && (
         <VendaModal
-          produto={vendaAtual}
-          onFechar={() => setVendaAtual(null)}
+          produtos={produtosSelecionados}
+          onFechar={() => setVendaAberta(false)}
           onConfirmar={handleConfirmarVenda}
         />
       )}

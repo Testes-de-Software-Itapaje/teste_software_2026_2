@@ -6,6 +6,16 @@ export function listarProdutos() {
   return requisitar('/produto', undefined, 'Erro ao buscar produtos')
 }
 
+export function listarPaginaProdutos(pagina, busca, signal) {
+  const parametros = new URLSearchParams({ pagina, busca })
+
+  return requisitar(
+    `/produto/pagina?${parametros}`,
+    { signal },
+    'Erro ao buscar produtos'
+  )
+}
+
 export function buscarProduto(id) {
   return requisitar(`/produto/${id}`, undefined, 'Erro ao buscar produto')
 }
