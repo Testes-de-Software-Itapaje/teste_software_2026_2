@@ -45,6 +45,41 @@ def formatar_atributo(produto: ProdutoDB, atributo: str) -> str:
     return f"**{produto.nome}** — {ATRIBUTOS[atributo]}: {valores[atributo]}"
 
 
+def _responder_extremo(pergunta: str, db: Session) -> str | None:
+    """Responde 'qual produto tem maior/menor estoque, preço ou peso'."""
+    if not re.search(r"\bproduto\b", pergunta) or "categoria" in pergunta:
+        return None
+
+    maior = re.search(r"\b(?:maior|mais|max\w*)\b", pergunta)
+    menor = re.search(r"\b(?:menor|menos|min\w*)\b", pergunta)
+    if bool(maior) == bool(menor) and not re.search(r"caro|barato|pesado|leve", pergunta):
+        return None
+
+    if re.search(r"estoque|quantidade|unidades", pergunta):
+        coluna, rotulo, formato = ProdutoDB.quant_estoque, "Estoque", lambda p: f"{p.quant_estoque} unidades"
+        crescente = bool(menor)
+    elif re.search(r"caro|barato|preco|valor", pergunta):
+        coluna, rotulo, formato = ProdutoDB.preco, "Preço", lambda p: formatar_preco(p.preco)
+        crescente = bool(re.search(r"barato|menor|menos", pergunta))
+    elif re.search(r"pesad|leve|peso", pergunta):
+        coluna, rotulo, formato = ProdutoDB.peso, "Peso", lambda p: f"{p.peso:g}"
+        crescente = bool(re.search(r"leve|menor|menos", pergunta))
+    else:
+        return None
+
+    ordem = coluna.asc() if crescente else coluna.desc()
+    primeiro = db.query(ProdutoDB).order_by(ordem, ProdutoDB.id).first()
+    if primeiro is None:
+        return "Não há produtos cadastrados."
+    valor = getattr(primeiro, coluna.key)
+    empatados = db.query(ProdutoDB).filter(coluna == valor).order_by(ProdutoDB.nome, ProdutoDB.id).all()
+    linhas = [f"**{p.nome}** — {rotulo}: {formato(p)}" for p in empatados[:5]]
+    if len(empatados) == 1:
+        return linhas[0]
+    aviso = f"\n(+ {len(empatados) - 5} outros)" if len(empatados) > 5 else ""
+    return f"{len(empatados)} produtos empatados:\n\n" + "\n".join(f"- {l}" for l in linhas) + aviso
+
+
 def responder_do_catalogo(mensagem: str, db: Session) -> str | None:
     pergunta = normalizar_busca(mensagem).strip().rstrip("?! .")
 
@@ -77,8 +112,20 @@ def responder_do_catalogo(mensagem: str, db: Session) -> str | None:
         + SUFIXO_CATALOGO,
         " ".join(pergunta.split()),
     )
-    if consulta_estoque_zero:
-        sem_estoque = consulta_estoque_zero.group("sem") is not None
+    pergunta_simples = " ".join(pergunta.split())
+    estoque_zero_livre = (
+        "produto" in pergunta_simples
+        and re.match(r"(?:qual|quais|quantos|liste|listar|mostre|ha|existe|existem|tem|temos|algum)\b", pergunta_simples)
+        and re.search(
+            r"\b(?:zerad[oa]s?|esgotad[oa]s?|sem estoque|acabou|acabaram|estoque (?:igual a )?(?:0|zero))\b",
+            pergunta_simples,
+        )
+    )
+    if consulta_estoque_zero or estoque_zero_livre:
+        if consulta_estoque_zero:
+            sem_estoque = consulta_estoque_zero.group("sem") is not None
+        else:
+            sem_estoque = "sem estoque" in pergunta_simples
         saldo = ProdutoDB.quant_estoque
         filtro = saldo <= 0 if sem_estoque else saldo == 0
         descricao = "sem estoque" if sem_estoque else "com estoque zerado"
@@ -93,6 +140,40 @@ def responder_do_catalogo(mensagem: str, db: Session) -> str | None:
         aviso = f"\nMostrando os primeiros {LIMITE_CONTEXTO}." if total > LIMITE_CONTEXTO else ""
         unidade = "produto" if total == 1 else "produtos"
         return f"Há **{total}** {unidade} {descricao}.\n\n{nomes}{aviso}"
+
+    if re.fullmatch(
+        r"(?:quais (?:sao )?(?:as )?|liste (?:as )?|listar (?:as )?|mostre (?:as )?)?"
+        r"categorias(?: (?:existem|ha|temos|tem|cadastradas))?" + SUFIXO_CATALOGO,
+        " ".join(pergunta.split()),
+    ):
+        linhas = _contagem_por_categoria(db)
+        if not linhas:
+            return "Não há produtos cadastrados."
+        itens = "\n".join(f"- {nome}: {qtd}" for nome, qtd in linhas)
+        return f"Há **{len(linhas)}** categorias:\n\n{itens}"
+
+    por_categoria = re.fullmatch(
+        r"(?P<acao>quantos|quais|liste|listar|mostre) produtos "
+        r"(?:ha |existem |tem |temos )?(?:na|da|de|em) categoria (?P<cat>.+?)"
+        + SUFIXO_CATALOGO,
+        " ".join(pergunta.split()),
+    )
+    if por_categoria:
+        alvo = por_categoria["cat"].strip(" «»\"'")
+        consulta = db.query(ProdutoDB).filter(func.normalizar_busca(ProdutoDB.categoria) == alvo)
+        total = consulta.count()
+        if not total:
+            return f"Nenhum produto foi encontrado na categoria {alvo}."
+        if por_categoria["acao"] == "quantos":
+            return f"Há **{total}** produtos na categoria **{alvo}**."
+        produtos = consulta.order_by(ProdutoDB.nome, ProdutoDB.id).limit(LIMITE_CONTEXTO)
+        nomes = "\n".join(f"- {p.nome} (#{p.id})" for p in produtos)
+        aviso = f"\nMostrando os primeiros {LIMITE_CONTEXTO}." if total > LIMITE_CONTEXTO else ""
+        return f"Há **{total}** produtos na categoria **{alvo}**.\n\n{nomes}{aviso}"
+
+    ranking = _responder_extremo(pergunta, db)
+    if ranking is not None:
+        return ranking
 
     extremo = re.fullmatch(
         r"(?:(?:qual (?:e )?o|o) )?produto (?:mais )?(barato|caro)" + SUFIXO_CATALOGO,
@@ -137,11 +218,57 @@ def responder_do_catalogo(mensagem: str, db: Session) -> str | None:
     return None
 
 
+def _contagem_por_categoria(db: Session) -> list[tuple[str, int]]:
+    """Conta produtos por categoria, unindo variações de acento/maiúsculas."""
+    contagem: dict[str, list] = {}
+    for nome, qtd in db.query(ProdutoDB.categoria, func.count(ProdutoDB.id)).group_by(ProdutoDB.categoria):
+        chave = normalizar_busca(nome)
+        if chave in contagem:
+            contagem[chave][1] += qtd
+        else:
+            contagem[chave] = [nome, qtd]
+    return sorted((tuple(v) for v in contagem.values()), key=lambda x: normalizar_busca(x[0]))
+
+
+def _extremo_estoque(db: Session, ordem) -> dict | None:
+    produto = db.query(ProdutoDB).order_by(ordem, ProdutoDB.id).first()
+    return None if produto is None else {"nome": produto.nome, "unidades": produto.quant_estoque}
+
+
+def gerar_resumo_catalogo(db: Session) -> dict:
+    total, estoque, menor, maior, media = db.query(
+        func.count(ProdutoDB.id),
+        func.coalesce(func.sum(ProdutoDB.quant_estoque), 0),
+        func.min(ProdutoDB.preco),
+        func.max(ProdutoDB.preco),
+        func.avg(ProdutoDB.preco),
+    ).one()
+    return {
+        "total_produtos": total,
+        "total_unidades_em_estoque": estoque,
+        "produtos_sem_estoque": db.query(func.count(ProdutoDB.id)).filter(ProdutoDB.quant_estoque <= 0).scalar(),
+        "menor_preco": formatar_preco(menor) if total else None,
+        "maior_preco": formatar_preco(maior) if total else None,
+        "preco_medio": formatar_preco(media) if total else None,
+        "produto_com_maior_estoque": _extremo_estoque(db, ProdutoDB.quant_estoque.desc()),
+        "produto_com_menor_estoque": _extremo_estoque(db, ProdutoDB.quant_estoque.asc()),
+        "numero_de_produtos_por_categoria_NAO_E_ESTOQUE": {nome: qtd for nome, qtd in _contagem_por_categoria(db)},
+    }
+
+
+def _variantes(termo: str) -> list[str]:
+    """Inclui singular simples para casar plurais (refrigerantes -> refrigerante)."""
+    if len(termo) > 4 and termo.endswith("s"):
+        return [termo, termo[:-1]]
+    return [termo]
+
+
 def gerar_contexto_produtos(mensagem: str, db: Session) -> str:
     palavras = re.findall(r"[a-z0-9]+", normalizar_busca(mensagem))
     termos = list(dict.fromkeys(
         termo for termo in palavras if len(termo) >= 3 and termo not in TERMOS_COMUNS
     ))[:12]
+    termos = list(dict.fromkeys(v for t in termos for v in _variantes(t)))[:16]
 
     consulta = db.query(ProdutoDB)
     if termos:
@@ -173,4 +300,8 @@ def gerar_contexto_produtos(mensagem: str, db: Session) -> str:
         "categoria": produto.categoria[:100],
         "peso": produto.peso,
     } for produto in produtos]
-    return json.dumps(registros, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        {"resumo_do_catalogo": gerar_resumo_catalogo(db), "registros_relacionados": registros},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )

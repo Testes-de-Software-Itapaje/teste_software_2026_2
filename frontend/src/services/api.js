@@ -1,5 +1,7 @@
+// Sem VITE_API_URL, usa o mesmo host da página (funciona no PC e no celular
+// pela rede local, ex.: http://192.168.0.9:5173 -> http://192.168.0.9:8000).
 export const API_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
+  import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:8000`
 
 // O FastAPI devolve `detail` como texto (HTTPException) ou como lista
 // (erros de validação 422). Aqui os dois formatos viram uma frase legível.

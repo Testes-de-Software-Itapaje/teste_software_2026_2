@@ -85,7 +85,10 @@ input {
 
 .tabela-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 14px;
   color: #718986;
   font-size: 13px;
@@ -1296,4 +1299,47 @@ td:nth-child(3) {
   .venda-form {
     padding: 20px;
   }
+}
+
+.paginacao-ir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paginacao-ir input {
+  width: 64px;
+  padding: 7px 8px;
+  border: 1px solid #a9ddd0;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.th-ordenar {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.th-ordenar:hover {
+  text-decoration: underline;
+}
+
+.por-pagina {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.por-pagina select {
+  padding: 5px 8px;
+  border: 1px solid #a9ddd0;
+  border-radius: 8px;
+  background: #f5fbf9;
 }

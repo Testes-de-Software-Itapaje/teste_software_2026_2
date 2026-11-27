@@ -17,12 +17,28 @@ const moeda = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL'
 })
 
+const COLUNAS = [
+  { campo: 'nome', titulo: 'Nome' },
+  { campo: 'preco', titulo: 'Preço' },
+  { campo: 'quant_estoque', titulo: 'Estoque' },
+  { campo: 'validade', titulo: 'Validade' },
+  { campo: 'codigo_barras', titulo: 'Código de Barras' },
+  { campo: 'categoria', titulo: 'Categoria' },
+  { campo: 'peso', titulo: 'Peso' }
+]
+
+const OPCOES_POR_PAGINA = [10, 20, 50, 100]
+
 function Produtos() {
   const [resultado, setResultado] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
   const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState(10)
+  const [ordenarPor, setOrdenarPor] = useState('nome')
+  const [ordem, setOrdem] = useState('asc')
+  const [paginaDigitada, setPaginaDigitada] = useState('1')
   const [revisao, setRevisao] = useState(0)
   const [selecionados, setSelecionados] = useState({})
   const [vendaAberta, setVendaAberta] = useState(false)
@@ -38,9 +54,14 @@ function Produtos() {
 
     async function carregarProdutos() {
       try {
-        const dados = await listarPaginaProdutos(pagina, busca.trim(), consulta.signal)
+        const dados = await listarPaginaProdutos(pagina, busca.trim(), consulta.signal, {
+          porPagina,
+          ordenarPor,
+          ordem
+        })
         if (consulta.signal.aborted) return
         setResultado(dados)
+        setPaginaDigitada(String(dados.pagina))
         setSelecionados(atuais => {
           const atualizados = { ...atuais }
           for (const produto of dados.itens) {
@@ -62,11 +83,28 @@ function Produtos() {
 
     carregarProdutos()
     return () => consulta.abort()
-  }, [pagina, busca, revisao])
+  }, [pagina, busca, revisao, porPagina, ordenarPor, ordem])
 
   function trocarPagina(novaPagina) {
     prepararConsulta()
     setPagina(novaPagina)
+  }
+
+  function alternarOrdenacao(campo) {
+    prepararConsulta()
+    if (campo === ordenarPor) {
+      setOrdem(atual => (atual === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setOrdenarPor(campo)
+      setOrdem('asc')
+    }
+    setPagina(1)
+  }
+
+  function trocarPorPagina(valor) {
+    prepararConsulta()
+    setPorPagina(valor)
+    setPagina(1)
   }
 
   function atualizarLista() {
@@ -181,6 +219,19 @@ function Produtos() {
             <>
               <div className="tabela-header">
                 <span>Total: {resultado.total} produtos</span>
+                <label className="por-pagina">
+                  Exibir{' '}
+                  <select
+                    value={porPagina}
+                    onChange={evento => trocarPorPagina(Number(evento.target.value))}
+                    aria-label="Produtos por página"
+                  >
+                    {OPCOES_POR_PAGINA.map(opcao => (
+                      <option key={opcao} value={opcao}>{opcao}</option>
+                    ))}
+                  </select>
+                  {' '}por página
+                </label>
               </div>
               <div className="tabela-container">
                 <table>
@@ -188,13 +239,28 @@ function Produtos() {
                     <tr>
                       <th scope="col">Selecionar</th>
                       <th>ID</th>
-                      <th>Nome</th>
-                      <th>Preço</th>
-                      <th>Estoque</th>
-                      <th>Validade</th>
-                      <th>Código de Barras</th>
-                      <th>Categoria</th>
-                      <th>Peso</th>
+                      {COLUNAS.map(coluna => (
+                        <th
+                          key={coluna.campo}
+                          aria-sort={
+                            ordenarPor !== coluna.campo
+                              ? 'none'
+                              : ordem === 'asc' ? 'ascending' : 'descending'
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="th-ordenar"
+                            onClick={() => alternarOrdenacao(coluna.campo)}
+                            title={`Ordenar por ${coluna.titulo}`}
+                          >
+                            {coluna.titulo}
+                            <span aria-hidden="true">
+                              {ordenarPor === coluna.campo ? (ordem === 'asc' ? ' ▲' : ' ▼') : ' ↕'}
+                            </span>
+                          </button>
+                        </th>
+                      ))}
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -257,17 +323,58 @@ function Produtos() {
                   <button
                     type="button"
                     disabled={resultado.pagina <= 1}
+                    onClick={() => trocarPagina(1)}
+                    aria-label="Primeira página"
+                  >
+                    « Primeira
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resultado.pagina <= 1}
                     onClick={() => trocarPagina(resultado.pagina - 1)}
                   >
                     Anterior
                   </button>
-                  <span>Página {resultado.pagina} de {resultado.total_paginas}</span>
+                  <form
+                    className="paginacao-ir"
+                    onSubmit={evento => {
+                      evento.preventDefault()
+                      const alvo = Math.min(
+                        Math.max(parseInt(paginaDigitada, 10) || 1, 1),
+                        resultado.total_paginas
+                      )
+                      if (alvo !== resultado.pagina) trocarPagina(alvo)
+                      else setPaginaDigitada(String(alvo))
+                    }}
+                  >
+                    <label>
+                      Página{' '}
+                      <input
+                        type="number"
+                        min={1}
+                        max={resultado.total_paginas}
+                        value={paginaDigitada}
+                        aria-label="Número da página"
+                        onChange={evento => setPaginaDigitada(evento.target.value)}
+                      />
+                    </label>
+                    <span>de {resultado.total_paginas}</span>
+                    <button type="submit">Ir</button>
+                  </form>
                   <button
                     type="button"
                     disabled={resultado.pagina >= resultado.total_paginas}
                     onClick={() => trocarPagina(resultado.pagina + 1)}
                   >
                     Próxima
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resultado.pagina >= resultado.total_paginas}
+                    onClick={() => trocarPagina(resultado.total_paginas)}
+                    aria-label="Última página"
+                  >
+                    Última »
                   </button>
                 </nav>
               )}
